@@ -1,0 +1,17 @@
+# Node
+node_modules/
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+ai-service/.env
+
+# React
+frontend/build/
+frontend/.env
+
+# General
+.DS_Store
+*.log
