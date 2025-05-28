@@ -1,8 +1,3 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
-import uvicorn
 import re
 import requests
 import json
@@ -342,7 +337,7 @@ def character_level_repair(json_str):
         repaired = json_str
         
         if error_pos < len(json_str):
-            char_at_error = json_str[error_pos]
+            json_str[error_pos]
             
             for i in range(error_pos - 1, -1, -1):
                 char = json_str[i]

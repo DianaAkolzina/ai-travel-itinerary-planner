@@ -5,16 +5,11 @@ from typing import List
 import uvicorn
 import re
 import requests
-import json
 import os
-import random
-import math
 from dotenv import load_dotenv
-from helpers import create_prompt, get_location_context, reverse_geocode_location, get_nearby_cities, get_nearby_cities_fallback
-from helpers import repair_json_aggressive, repair_json_basic, geocode_location
+from helpers import create_prompt, reverse_geocode_location, get_nearby_cities
 from helpers import  enrich_and_validate_plan, generate_fallback_plan
-from helpers import parse_llm_response, smart_comma_repair, character_level_repair, optimize_travel_route
-from helpers import validate_parsed_plan, calculate_distance_km, generate_random_coordinates_in_radius
+from helpers import parse_llm_response
 load_dotenv()
 
 

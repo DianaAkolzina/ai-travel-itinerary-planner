@@ -286,7 +286,17 @@ main() {
     }
     
     print_info "Installing Python dependencies..."
+<<<<<<< HEAD
     pip install --upgrade pip >/dev/null 2>&1
+=======
+    pip install --upgrade pip || {
+        print_error "Failed to upgrade pip"
+        exit 1
+    }
+
+    
+    # Check if requirements.txt exists and install dependencies
+>>>>>>> f62a19a (Persist cache forever and improve MongoDB logging)
     if [ -f "requirements.txt" ]; then
         pip install -r requirements.txt || {
             print_error "Failed to install Python dependencies"

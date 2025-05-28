@@ -1,5 +1,5 @@
 
-from fastapi import Request, Response
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import random
 from ..services.cache_service import CacheService

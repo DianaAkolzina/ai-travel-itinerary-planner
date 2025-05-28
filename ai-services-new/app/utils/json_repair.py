@@ -1,6 +1,5 @@
 import json
 import re
-import asyncio
 
 
 def smart_comma_repair(json_str: str) -> str:

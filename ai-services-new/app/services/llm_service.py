@@ -1,7 +1,6 @@
 import logging
 import json
-import requests
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
 import asyncio
 import aiohttp
@@ -307,7 +306,7 @@ class LLMService:
             lat = float(parts[0].strip())
             lng = float(parts[1].strip())
             return lat, lng
-        except (ValueError, IndexError) as e:
+        except (ValueError, IndexError):
             logger.error(f"Invalid destination format: {destination}")
             return 0.0, 0.0  # Return default instead of raising exception
     

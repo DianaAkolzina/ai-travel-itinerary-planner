@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import List, Optional
 from app.external.weather_api import WeatherAPIClient
 
