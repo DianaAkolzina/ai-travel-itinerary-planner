@@ -1,20 +1,17 @@
 #!/bin/bash
 
-# Enhanced startup script for AI Travel Itinerary Planner with Database Caching
-# This script handles all dependencies, services, and health checks
 
-set -e  # Exit on any error
 
-# Color codes for better output
+set -e  
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
-# Function to print colored output
 print_status() {
     echo -e "${GREEN}✅ $1${NC}"
 }
@@ -35,17 +32,15 @@ print_header() {
     echo -e "${PURPLE}🚀 $1${NC}"
 }
 
-# Function to check if a port is available
 check_port() {
     local port=$1
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        return 1  # Port is in use
+        return 1  
     else
-        return 0  # Port is available
+        return 0  
     fi
 }
 
-# Function to wait for service to be ready
 wait_for_service() {
     local url=$1
     local service_name=$2
@@ -69,19 +64,17 @@ wait_for_service() {
     return 1
 }
 
-# Function to check and start MongoDB
 setup_mongodb() {
     print_header "Setting up MongoDB..."
     
-    # Check if MongoDB is already running
     if pgrep -x "mongod" > /dev/null; then
         print_status "MongoDB is already running"
         return 0
     fi
     
-    # Try to start MongoDB service
+    
     if command -v brew >/dev/null 2>&1; then
-        # macOS with Homebrew
+        
         print_info "Starting MongoDB with Homebrew..."
         if brew services list | grep mongodb-community | grep started >/dev/null; then
             print_status "MongoDB service already started"
@@ -96,25 +89,25 @@ setup_mongodb() {
             }
         fi
     elif command -v systemctl >/dev/null 2>&1; then
-        # Linux with systemd
+      
         print_info "Starting MongoDB with systemctl..."
         sudo systemctl start mongod || {
             print_error "Failed to start MongoDB service"
             return 1
         }
     elif command -v service >/dev/null 2>&1; then
-        # Linux with service command
+     
         print_info "Starting MongoDB with service command..."
         sudo service mongod start || {
             print_error "Failed to start MongoDB service"
             return 1
         }
     else
-        # Try Docker as fallback
+     
         print_info "Trying to start MongoDB with Docker..."
         if command -v docker >/dev/null 2>&1; then
             docker run -d --name mongodb-travel -p 27017:27017 mongo:latest || {
-                # Check if container already exists
+               
                 if docker ps -a | grep mongodb-travel >/dev/null; then
                     print_info "Starting existing MongoDB container..."
                     docker start mongodb-travel
@@ -133,7 +126,6 @@ setup_mongodb() {
         fi
     fi
     
-    # Wait for MongoDB to be ready
     print_info "Waiting for MongoDB to be ready..."
     local attempt=1
     local max_attempts=15
@@ -153,7 +145,6 @@ setup_mongodb() {
     return 1
 }
 
-# Function to check Ollama service
 check_ollama() {
     print_header "Checking Ollama service..."
     
@@ -163,18 +154,15 @@ check_ollama() {
         return 1
     fi
     
-    # Check if Ollama service is running
     if ! curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
         print_info "Starting Ollama service..."
         ollama serve &
         
-        # Wait for Ollama to be ready
         wait_for_service "http://localhost:11434/api/version" "Ollama"
     else
         print_status "Ollama service is already running"
     fi
     
-    # Check if Llama3 model is available
     if ollama list | grep llama3 >/dev/null 2>&1; then
         print_status "Llama3 model is available"
     else
@@ -189,19 +177,15 @@ check_ollama() {
     return 0
 }
 
-# Main startup function
 main() {
     print_header "🌍 AI Travel Itinerary Planner with Database Caching"
     echo ""
     
-    # Load environment variables
     print_header "Loading Environment Configuration..."
     if [ -f .env ]; then
-        # Load environment variables, excluding comments and empty lines
         export $(grep -v '^#' .env | grep -v '^$' | xargs)
         print_status "Environment variables loaded from .env"
         
-        # Validate required environment variables
         if [ -n "$GOOGLE_MAPS_API_KEY" ]; then
             print_info "🔑 Google Maps API Key: ${GOOGLE_MAPS_API_KEY:0:10}********"
         else
@@ -214,7 +198,6 @@ main() {
             print_warning "RapidAPI Key not set"
         fi
         
-        # Cache configuration
         CACHE_ENABLED=${CACHE_ENABLED:-true}
         CACHE_EXPIRY_HOURS=${CACHE_EXPIRY_HOURS:-24}
         MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/travel-planner}
@@ -236,7 +219,6 @@ main() {
     
     echo ""
     
-    # Check port availability
     print_header "Checking Port Availability..."
     
     if ! check_port 8000; then
@@ -260,7 +242,6 @@ main() {
     print_status "All required ports are available"
     echo ""
     
-    # Setup MongoDB if caching is enabled
     if [ "$CACHE_ENABLED" = "true" ]; then
         if ! setup_mongodb; then
             print_warning "MongoDB setup failed. Caching will be disabled."
@@ -272,7 +253,6 @@ main() {
         echo ""
     fi
     
-    # Check Ollama service
     if ! check_ollama; then
         print_error "Ollama setup failed. The AI service may not work properly."
         read -p "Continue anyway? (y/N): " -n 1 -r
@@ -283,7 +263,6 @@ main() {
     fi
     echo ""
     
-    # Setup Python AI service
     print_header "🐍 Setting up Python AI Service..."
     
     if [ ! -d "ai-services-new" ]; then
@@ -293,7 +272,6 @@ main() {
     
     cd ai-services-new
     
-    # Create virtual environment if it doesn't exist
     if [ ! -d "venv" ]; then
         print_info "Creating Python virtual environment..."
         python3 -m venv venv || {
@@ -302,17 +280,13 @@ main() {
         }
     fi
     
-    # Activate virtual environment
     source venv/bin/activate || {
         print_error "Failed to activate virtual environment"
         exit 1
     }
     
-    # Install/update Python dependencies
     print_info "Installing Python dependencies..."
     pip install --upgrade pip >/dev/null 2>&1
-    
-    # Check if requirements.txt exists and install dependencies
     if [ -f "requirements.txt" ]; then
         pip install -r requirements.txt || {
             print_error "Failed to install Python dependencies"
@@ -322,7 +296,6 @@ main() {
         print_warning "requirements.txt not found, skipping Python dependency installation"
     fi
     
-    # Verify cache dependencies are installed
     if [ "$CACHE_ENABLED" = "true" ]; then
         print_info "Verifying cache dependencies..."
         python -c "import pymongo; print('✅ pymongo installed')" || {
@@ -336,7 +309,6 @@ main() {
     
     print_status "Python environment ready"
     
-    # Start Python AI service
     print_info "Starting Python AI service on port 8000..."
     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
     PYTHON_PID=$!
@@ -344,7 +316,6 @@ main() {
     cd ..
     echo ""
     
-    # Setup Node.js backend
     print_header "🚀 Setting up Node.js Backend..."
     
     if [ ! -d "backend" ]; then
@@ -354,7 +325,6 @@ main() {
     
     cd backend
     
-    # Install Node.js dependencies
     print_info "Installing Node.js dependencies..."
     npm install || {
         print_error "Failed to install Node.js dependencies"
@@ -363,7 +333,6 @@ main() {
     
     print_status "Node.js dependencies installed"
     
-    # Start Node.js backend
     print_info "Starting Node.js backend on port 5000..."
     npm start &
     NODEJS_PID=$!
@@ -371,7 +340,6 @@ main() {
     cd ..
     echo ""
     
-    # Setup React frontend
     print_header "🌐 Setting up React Frontend..."
     
     if [ ! -d "frontend" ]; then
@@ -381,7 +349,6 @@ main() {
     
     cd frontend
     
-    # Install React dependencies
     print_info "Installing React dependencies..."
     npm install || {
         print_error "Failed to install React dependencies"
@@ -390,7 +357,6 @@ main() {
     
     print_status "React dependencies installed"
     
-    # Start React frontend
     print_info "Starting React frontend on port 5173..."
     npm run dev &
     REACT_PID=$!
@@ -398,12 +364,10 @@ main() {
     cd ..
     echo ""
     
-    # Wait for services to be ready
     print_header "🔍 Verifying Service Health..."
-    
-    # Wait for Python AI service
+   
     if wait_for_service "http://localhost:8000/docs" "Python AI Service"; then
-        # Test cache functionality if enabled
+     
         if [ "$CACHE_ENABLED" = "true" ]; then
             print_info "Testing cache functionality..."
             if curl -s "http://localhost:8000/cache/stats" >/dev/null 2>&1; then
@@ -416,12 +380,10 @@ main() {
         print_error "Python AI service failed to start"
     fi
     
-    # Wait for Node.js backend
     wait_for_service "http://localhost:5000" "Node.js Backend" || {
         print_error "Node.js backend failed to start"
     }
     
-    # Wait for React frontend
     wait_for_service "http://localhost:5173" "React Frontend" || {
         print_error "React frontend failed to start"
     }
@@ -446,7 +408,6 @@ main() {
     echo -e "${GREEN}✨ Ready to plan amazing trips! Visit: http://localhost:5173${NC}"
     echo ""
     
-    # Setup cleanup trap
     cleanup() {
         echo ""
         print_info "Shutting down services..."
@@ -463,7 +424,6 @@ main() {
             kill $PYTHON_PID 2>/dev/null || true
         fi
         
-        # Kill any remaining processes on the ports
         lsof -ti:5173 | xargs kill -9 2>/dev/null || true
         lsof -ti:5000 | xargs kill -9 2>/dev/null || true
         lsof -ti:8000 | xargs kill -9 2>/dev/null || true
@@ -474,10 +434,8 @@ main() {
     
     trap cleanup SIGINT SIGTERM
     
-    # Keep the script running
     print_info "Press Ctrl+C to stop all services"
     wait
 }
 
-# Run main function
 main "$@"
