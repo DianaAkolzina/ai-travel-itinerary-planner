@@ -26,7 +26,7 @@ class GoogleMapsClient:
             if r.status_code == 200:
                 data = r.json()
                 if data['status'] == 'OK' and data['results']:
-                    # Extract location components
+                    
                     result = data['results'][0]
                     components = result.get('address_components', [])
                     

@@ -3,6 +3,9 @@ from app.api.middleware import setup_middleware
 from app.api.routes import health, itinerary
 from app.config import settings
 import uvicorn
+from .api import cache_routes
+
+
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application"""
@@ -12,16 +15,16 @@ def create_app() -> FastAPI:
         description="AI-powered travel itinerary generator"
     )
     
-    # Setup middleware (CORS, etc.)
+   
     setup_middleware(app)
     
-    # Include routers
+    
     app.include_router(health.router, tags=["health"])
     app.include_router(itinerary.router, tags=["itinerary"])
-    
+    app.include_router(cache_routes.router)
     return app
 
-# Create the app instance - THIS IS WHAT UVICORN LOOKS FOR
+
 app = create_app()
 
 if __name__ == "__main__":

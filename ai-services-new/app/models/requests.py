@@ -7,6 +7,6 @@ class Preferences(BaseModel):
 
 class ItineraryRequest(BaseModel):
     destination: str
-    travel_dates: List[date]  # Changed from 'days: int'
+    travel_dates: List[date]  
     preferences: Preferences
     radius: int
