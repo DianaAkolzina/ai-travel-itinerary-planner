@@ -208,7 +208,10 @@ class LLMService:
             return original_prompt + retry_instructions[-1]
 
     def _parse_llm_response_with_validation(self, raw_response: str, travel_dates: List[str]) -> Optional[Dict[str, Any]]:
-   
+        """
+        Parse and validate LLM response with comprehensive JSON repair
+        Returns None if parsing fails after all attempts
+        """
         try:
             logger.info("🔍 Parsing LLM response...")
             json_start = raw_response.find('{')
@@ -275,7 +278,9 @@ class LLMService:
             return None
 
     def _validate_itinerary_structure(self, parsed_data: Dict[str, Any], travel_dates: List[str]) -> bool:
-    
+        """
+        Validate that the parsed JSON has the correct structure for an itinerary
+        """
         try:
     
             if "plan" not in parsed_data:
@@ -314,7 +319,9 @@ class LLMService:
             return False
     
     async def generate_plan(self, request, nearby_cities: List[str]) -> List[Dict[str, Any]]:
- 
+        """
+        Generate travel plan - this is what ItineraryService expects
+        """
         try:
             
             destination = request.destination
@@ -348,7 +355,9 @@ class LLMService:
             return self._create_simple_fallback_plan(request, nearby_cities)
     
     async def generate_fallback_plan(self, request, lat: float, lng: float, nearby_cities: List[str]) -> List[Dict[str, Any]]:
-   
+        """
+        Generate fallback plan when main generation fails
+        """
         try:
             logger.info("🔄 Generating fallback plan")
             return self._create_simple_fallback_plan(request, nearby_cities, lat, lng)
@@ -359,7 +368,7 @@ class LLMService:
             return self._create_minimal_fallback(request, lat, lng)
     
     def _create_simple_fallback_plan(self, request, nearby_cities: List[str], lat: float = None, lng: float = None) -> List[Dict[str, Any]]:
-      
+        """Create a simple fallback plan with proper city rotation"""
         try:
             if lat is None or lng is None:
                 lat, lng = self._parse_coordinates(request.destination)
@@ -411,7 +420,7 @@ class LLMService:
             return self._create_minimal_fallback(request, lat or 0.0, lng or 0.0)
     
     def _create_minimal_fallback(self, request, lat: float, lng: float) -> List[Dict[str, Any]]:
-       
+        """Create the most basic fallback plan possible"""
         plan = []
         for i, date in enumerate(request.travel_dates):
             day_plan = {
@@ -436,7 +445,7 @@ class LLMService:
         return plan
     
     def _parse_coordinates(self, destination: str) -> tuple:
-       
+        """Parse coordinates from destination string format 'Lat: X, Lng: Y'"""
         try:
             parts = destination.replace("Lat:", "").replace("Lng:", "").split(",")
             lat = float(parts[0].strip())
