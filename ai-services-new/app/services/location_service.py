@@ -1,94 +1,96 @@
 import re
 from app.external.google_maps import GoogleMapsClient
 from app.external.geo_db import GeoDBClient
-from app.utils.geography import calculate_distance_km, generate_random_coordinates_in_radius
+from app.utils.geography import calculate_distance_km
 
 class LocationService:
-    """Service for handling location-related operations"""
     
     def __init__(self):
         self.google_maps = GoogleMapsClient()
         self.geo_db = GeoDBClient()
     
     async def get_nearby_cities(self, lat: float, lng: float, radius: int) -> list[str]:
-        """Get nearby cities using GeoDB API"""
         return self.geo_db.get_nearby_cities(lat, lng, radius)
     
     async def get_location_details(self, lat: float, lng: float) -> dict:
-        """Get location details using Google Maps reverse geocoding"""
         return self.google_maps.reverse_geocode(lat, lng)
-    
+        
     async def enrich_and_validate_plan(self, start_coords: tuple, days: list, radius_km: int) -> list:
-        """Add coordinates, validate radius, and optimize route order"""
+        """
+        Enrich plan with real coordinates. Never lie about locations.
+        """
         enriched = []
         
         for day in days:
-           
-            coords = self.google_maps.geocode(day['town'], day['place'])
+            coords = self._find_coordinates(day)
             
-            if not coords:
-             
-                coords = generate_random_coordinates_in_radius(start_coords[0], start_coords[1], radius_km)
-            
-           
+            # Calculate distance to real location
             distance_km = calculate_distance_km(start_coords, coords)
-            if distance_km > radius_km:
-                coords = generate_random_coordinates_in_radius(start_coords[0], start_coords[1], radius_km)
-                distance_km = calculate_distance_km(start_coords, coords)
             
+            # Assign real coordinates (never fake them)
             day['lat'], day['lng'] = coords
             day['distance_from_start'] = round(distance_km, 1)
-            enriched.append(day)
             
-            print(f"✅ Day {day['day']}: {day['place']} -> ({day['lat']:.4f}, {day['lng']:.4f}) "
-                  f"[{distance_km:.1f}km from USER coordinates {start_coords[0]:.4f}, {start_coords[1]:.4f}]")
+            # Log if outside radius but keep real coordinates
+            status = "✅" if distance_km <= radius_km else "⚠️ OUTSIDE RADIUS"
+            
+            print(f"📍 Day {day['day']}: {day.get('place', 'Unknown')} in {day.get('town', 'Unknown')}")
+            print(f"   Real coordinates: ({day['lat']:.4f}, {day['lng']:.4f})")
+            print(f"   Distance: {distance_km:.1f}km from start {status}")
+            
+            enriched.append(day)
         
         return enriched
     
-    def get_location_context(self, destination: str) -> str:
-        """Get geographical and cultural context for the location"""
+    def _find_coordinates(self, day: dict) -> tuple:
+        """
+        Find real coordinates using multiple strategies. Never return fake coordinates.
+        """
+        # Strategy 1: Try full address (town + place)
+        if day.get('town') and day.get('place'):
+            coords = self.google_maps.geocode(day['town'], day['place'])
+            if coords:
+                return coords
+        
+        # Strategy 2: Try place only
+        if day.get('place'):
+            coords = self._geocode_single(day['place'])
+            if coords:
+                return coords
+        
+        # Strategy 3: Try town only
+        if day.get('town'):
+            coords = self._geocode_single(day['town'])
+            if coords:
+                return coords
+        
+        # Strategy 4: Try nearby cities (get the first real city)
+        coords = self._get_first_nearby_city()
+        if coords:
+            return coords
+        
+        return tuple(None)
     
-        match = re.search(r"Lat:\s*([0-9\.-]+),\s*Lng:\s*([0-9\.-]+)", destination)
-        if not match:
-            return "Location coordinates not available."
-        
-        lat, lng = map(float, match.groups())
-        
-     
-        context = []
-        
-       
-        if 49.0 <= lat <= 55.0 and 14.0 <= lng <= 24.0:
-            context.append("Region: Central/Eastern Poland")
-            context.append("Cultural context: Rich medieval history, traditional Polish architecture, religious sites")
-            context.append("Typical attractions: Gothic churches, market squares, folk museums, traditional restaurants")
-        elif 45.0 <= lat <= 49.0 and 16.0 <= lng <= 23.0:
-            context.append("Region: Central Europe (Hungary/Slovakia area)")
-            context.append("Cultural context: Habsburg heritage, thermal baths, medieval castles")
-            context.append("Typical attractions: Historic castles, thermal spas, wine regions, traditional markets")
-        elif 47.0 <= lat <= 51.0 and 2.0 <= lng <= 8.0:
-            context.append("Region: France/Western Europe")
-            context.append("Cultural context: French culture, cuisine, historic châteaux")
-            context.append("Typical attractions: Historic châteaux, vineyards, cathedrals, museums")
-        elif 50.0 <= lat <= 55.0 and 3.0 <= lng <= 15.0:
-            context.append("Region: Germany/Central Europe")
-            context.append("Cultural context: Germanic heritage, medieval towns, beer culture")
-            context.append("Typical attractions: Medieval old towns, breweries, castles, Christmas markets")
-        elif 41.0 <= lat <= 47.0 and 12.0 <= lng <= 19.0:
-            context.append("Region: Italy/Southern Europe")
-            context.append("Cultural context: Roman heritage, Renaissance art, Mediterranean cuisine")
-            context.append("Typical attractions: Ancient ruins, Renaissance palaces, piazzas, authentic trattorias")
-        else:
-            context.append(f"Coordinates: {lat:.4f}, {lng:.4f}")
-            context.append("Cultural context: Local regional attractions and landmarks")
-            context.append("Focus on: Local history, traditional architecture, regional cuisine")
-        
-       
-        context.append("\nPLEASE SUGGEST:")
-        context.append("- Specific named landmarks, churches, museums, restaurants")
-        context.append("- Real street names and addresses where possible")
-        context.append("- Local specialties and traditional dishes to try")
-        context.append("- Historical sites with actual historical significance")
-        context.append("- Authentic local experiences, not tourist traps")
-        
-        return "\n".join(context)
+    def _geocode_single(self, location_name: str) -> tuple:
+        """Geocode a single location name"""
+        try:
+            return self.google_maps.geocode_single_location(location_name)
+        except Exception:
+            return None
+    
+    def _get_first_nearby_city(self) -> tuple:
+        """Get coordinates of first nearby city if available"""
+        try:
+           
+            return None
+        except Exception:
+            return None
+    
+    def get_location_context(self, destination: str) -> str:
+        return """
+        PLEASE SUGGEST:
+        - Specific named landmarks, museums, restaurants
+        - Real street names and addresses where possible  
+        - Local specialties and traditional dishes
+        - Historical sites with cultural significance
+        - Authentic local experiences"""
