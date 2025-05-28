@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 import asyncio
 import aiohttp
@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 class LLMService:
     def __init__(self):
         """Initialize the LLM service with caching and external services"""
-        self.ollama_base_url = "http://localhost:11434"  # Default Ollama URL
+        self.ollama_base_url = "http://localhost:11434" 
         self.model_name = "llama3"
         self.cache_service = CacheService()
         
-        # Try to import weather and location services, but don't fail if they don't exist
+        self.max_retries = 3  
+        self.retry_delay = 2  
+        
         try:
             from app.services.weather_service import WeatherService
             self.weather_service = WeatherService()
@@ -31,20 +33,19 @@ class LLMService:
             logger.warning("LocationService not available")
             self.location_service = None
         
-        # Timeout settings
-        self.request_timeout = 120  # 2 minutes for LLM generation
+        self.request_timeout = 120  
         
         logger.info("LLM Service initialized with caching enabled")
         
-    def repair_json_aggressive(json_str: str) -> str:
+    def repair_json_aggressive(self, json_str: str) -> str:
         """More aggressive JSON repair with comprehensive error handling"""
         print("🔧 Applying aggressive JSON repairs...")
         
         try:
-            # Apply basic repairs first
+    
             json_str = repair_json_basic(json_str)
             
-            # Try to extract main JSON structure
+      
             array_match = re.search(r'\[.*\]', json_str, re.DOTALL)
             if array_match:
                 json_str = array_match.group()
@@ -52,34 +53,32 @@ class LLMService:
             else:
                 print("⚠️ No JSON array found, working with full string")
             
-            # Ensure proper start and end brackets
+           
             json_str = json_str.strip()
             
             if not json_str.startswith('['):
-                # Find first opening bracket
+             
                 bracket_pos = json_str.find('[')
                 if bracket_pos != -1:
                     json_str = json_str[bracket_pos:]
             
             if not json_str.endswith(']'):
-                # Find last closing bracket
+                
                 bracket_pos = json_str.rfind(']')
                 if bracket_pos != -1:
                     json_str = json_str[:bracket_pos + 1]
             
-            # Fix unbalanced braces
             open_braces = json_str.count('{')
             close_braces = json_str.count('}')
             if open_braces > close_braces:
                 missing_braces = open_braces - close_braces
-                # Add missing closing braces before the final bracket
+               
                 if json_str.endswith(']'):
                     json_str = json_str[:-1] + '}' * missing_braces + ']'
                 else:
                     json_str = json_str + '}' * missing_braces
                 print(f"🔧 Added {missing_braces} missing closing braces")
             
-            # Fix unbalanced brackets
             open_brackets = json_str.count('[')
             close_brackets = json_str.count(']')
             if open_brackets > close_brackets:
@@ -87,13 +86,10 @@ class LLMService:
                 json_str = json_str + ']' * missing_brackets
                 print(f"🔧 Added {missing_brackets} missing closing brackets")
             
-            # Remove trailing commas before closing brackets/braces
             json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
             
-            # Add commas between adjacent objects
             json_str = re.sub(r'(\})\s*(\{)', r'\1,\2', json_str)
             
-            # Ensure we end at the final bracket
             final_bracket = json_str.rfind(']')
             if final_bracket != -1:
                 json_str = json_str[:final_bracket + 1]
@@ -103,17 +99,16 @@ class LLMService:
             
         except Exception as e:
             print(f"❌ Error in aggressive JSON repair: {e}")
-            # Return original string if repair fails
+        
             return json_str
-    
 
     async def generate_itinerary(self, destination: str, travel_dates: List[str], 
                                preferences: Dict[str, Any], radius: int) -> Dict[str, Any]:
         """
-        Generate a travel itinerary with intelligent caching
+        Generate a travel itinerary with intelligent caching and retry logic
         """
         try:
-            # Check cache first
+ 
             cached_response = self.cache_service.get_cached_response(
                 destination, travel_dates, preferences, radius
             )
@@ -122,38 +117,28 @@ class LLMService:
                 logger.info(f"Cache hit for destination: {destination}")
                 return cached_response
             
-            # Generate new itinerary
             logger.info(f"Generating new itinerary for destination: {destination}")
             
-            # Parse coordinates from destination string
             lat, lng = self._parse_coordinates(destination)
-            
-            # Get location context with better error handling
+    
             location_info = await self._get_location_context(lat, lng, radius)
             
-            # Get weather forecast with better error handling
+      
             weather_data = await self._get_weather_forecast(lat, lng, travel_dates)
             
-            # Build comprehensive prompt
+      
             prompt = self._build_itinerary_prompt(
                 location_info, travel_dates, preferences, radius, weather_data
             )
             
-            # Generate itinerary with LLM
-            try:
-                raw_response = await self._call_ollama(prompt)
-                structured_itinerary = self._parse_llm_response(raw_response, travel_dates)
-            except Exception as e:
-                logger.error(f"LLM generation failed: {e}")
-                # Create fallback itinerary directly
-                structured_itinerary = self._create_fallback_itinerary(travel_dates)
-            
-            # Enhance with additional data
+  
+            structured_itinerary = await self._generate_with_retries(prompt, travel_dates)
+      
             enhanced_itinerary = await self._enhance_itinerary(
                 structured_itinerary, lat, lng, weather_data, location_info
             )
             
-            # Cache the response
+     
             self.cache_service.cache_response(
                 destination, travel_dates, preferences, radius, enhanced_itinerary
             )
@@ -163,21 +148,185 @@ class LLMService:
             
         except Exception as e:
             logger.error(f"Error generating itinerary: {str(e)}")
-            # Return a basic fallback instead of raising exception
+        
             lat, lng = self._parse_coordinates(destination)
             fallback = self._create_fallback_itinerary(travel_dates)
             return await self._enhance_itinerary(fallback, lat, lng, {}, {})
+
+    async def _generate_with_retries(self, prompt: str, travel_dates: List[str]) -> Dict[str, Any]:
+        """
+        Generate itinerary with LLM, retrying if JSON parsing fails
+        """
+        for attempt in range(self.max_retries + 1): 
+            try:
+                logger.info(f"🎯 LLM generation attempt {attempt + 1}/{self.max_retries + 1}")
+       
+                raw_response = await self._call_ollama(prompt)
+             
+                structured_itinerary = self._parse_llm_response_with_validation(raw_response, travel_dates)
+                
+                if structured_itinerary:
+                    logger.info(f"✅ Successfully generated valid itinerary on attempt {attempt + 1}")
+                    return structured_itinerary
+                else:
+                   
+                    if attempt < self.max_retries:
+                        logger.warning(f"❌ JSON parsing failed on attempt {attempt + 1}, retrying in {self.retry_delay}s...")
+                        await asyncio.sleep(self.retry_delay)
+                       
+                        prompt = self._modify_prompt_for_retry(prompt, attempt)
+                    else:
+                        logger.error(f"❌ All {self.max_retries + 1} attempts failed, using fallback")
+                        break
+                        
+            except Exception as e:
+                logger.error(f"❌ LLM generation attempt {attempt + 1} failed: {e}")
+                if attempt < self.max_retries:
+                    logger.info(f"🔄 Retrying in {self.retry_delay}s...")
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    logger.error(f"❌ All {self.max_retries + 1} attempts failed due to errors")
+                    break
+        
+      
+        logger.info("🔄 Creating fallback itinerary after all retries failed")
+        return self._create_fallback_itinerary(travel_dates)
+
+    def _modify_prompt_for_retry(self, original_prompt: str, attempt_number: int) -> str:
+        """
+        Slightly modify the prompt for retry attempts to encourage different responses
+        """
+        retry_instructions = [
+            "\n\nIMPORTANT: Please ensure your response is VALID JSON format with proper commas and brackets.",
+            "\n\nNOTE: Your previous response had JSON formatting issues. Please be extra careful with JSON syntax.",
+            "\n\nREMINDER: Respond ONLY with valid JSON. Double-check all commas, brackets, and quotation marks.",
+        ]
+        
+        if attempt_number < len(retry_instructions):
+            return original_prompt + retry_instructions[attempt_number]
+        else:
+            return original_prompt + retry_instructions[-1]
+
+    def _parse_llm_response_with_validation(self, raw_response: str, travel_dates: List[str]) -> Optional[Dict[str, Any]]:
+        """
+        Parse and validate LLM response with comprehensive JSON repair
+        Returns None if parsing fails after all attempts
+        """
+        try:
+            logger.info("🔍 Parsing LLM response...")
+            json_start = raw_response.find('{')
+            json_end = raw_response.rfind('}') + 1
+            
+            if json_start == -1 or json_end == 0:
+                logger.warning("❌ No JSON found in response")
+                return None
+            
+            json_str = raw_response[json_start:json_end]
+            logger.info(f"📄 Extracted JSON string (length: {len(json_str)})")
+            
+            try:
+                parsed = json.loads(json_str)
+                logger.info("✅ Original JSON parsed successfully!")
+                
+                if not self._validate_itinerary_structure(parsed, travel_dates):
+                    logger.warning("❌ JSON structure validation failed")
+                    return None
+                
+                return parsed
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"❌ Initial JSON parsing failed: {e}")
+                logger.info("🔧 Attempting JSON repair...")
+                
+                repair_strategies = [
+                    ("Basic repair", repair_json_basic),
+                    ("Missing commas fix", fix_missing_commas),
+                    ("Smart comma repair", smart_comma_repair),
+                    ("Character-level repair", character_level_repair),
+                    ("Aggressive repair", self.repair_json_aggressive),
+                    ("Final validation repair", validate_and_repair_json)
+                ]
+                
+                for strategy_name, repair_func in repair_strategies:
+                    try:
+                        logger.info(f"🔧 Trying {strategy_name}...")
+                        repaired_json = repair_func(json_str)
+                        
+                        parsed = json.loads(repaired_json)
+                        logger.info(f"✅ {strategy_name} successful!")
+                        
+                        if not self._validate_itinerary_structure(parsed, travel_dates):
+                            logger.warning(f"❌ {strategy_name} produced invalid structure")
+                            continue
+                        
+                        logger.info(f"🎉 Successfully repaired and validated JSON using {strategy_name}")
+                        return parsed
+                        
+                    except json.JSONDecodeError as repair_error:
+                        logger.warning(f"❌ {strategy_name} failed: {repair_error}")
+                        continue
+                    except Exception as repair_error:
+                        logger.warning(f"❌ {strategy_name} error: {repair_error}")
+                        continue
+                
+                logger.error("❌ All JSON repair strategies failed - will trigger LLM retry")
+                logger.debug(f"Problematic JSON (first 500 chars): {json_str[:500]}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Unexpected error in LLM response parsing: {e}")
+            return None
+
+    def _validate_itinerary_structure(self, parsed_data: Dict[str, Any], travel_dates: List[str]) -> bool:
+        """
+        Validate that the parsed JSON has the correct structure for an itinerary
+        """
+        try:
+    
+            if "plan" not in parsed_data:
+                logger.warning("Missing 'plan' key in parsed JSON")
+                return False
+            
+            plan = parsed_data["plan"]
+            if not isinstance(plan, list):
+                logger.warning("'plan' is not a list")
+                return False
+            
+            if len(plan) != len(travel_dates):
+                logger.warning(f"Plan has {len(plan)} days but {len(travel_dates)} dates provided")
+            
+            for i, day_plan in enumerate(plan):
+                if not isinstance(day_plan, dict):
+                    logger.warning(f"Day {i+1} plan is not a dictionary")
+                    return False
+       
+                required_fields = ["day", "date", "town", "place", "activities"]
+                for field in required_fields:
+                    if field not in day_plan:
+                        logger.warning(f"Day {i+1} missing required field: {field}")
+                        return False
+                
+          
+                if not isinstance(day_plan.get("activities"), list):
+                    logger.warning(f"Day {i+1} activities is not a list")
+                    return False
+            
+            logger.info("✅ Itinerary structure validation passed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating itinerary structure: {e}")
+            return False
     
     async def generate_plan(self, request, nearby_cities: List[str]) -> List[Dict[str, Any]]:
         """
         Generate travel plan - this is what ItineraryService expects
         """
         try:
-            # Convert request object to the format that generate_itinerary expects
+            
             destination = request.destination
             travel_dates = [str(d) for d in request.travel_dates]
             
-            # Handle preferences - could be object or dict
             preferences = {}
             if hasattr(request, 'preferences'):
                 if hasattr(request.preferences, '__dict__'):
@@ -193,10 +342,8 @@ class LLMService:
             
             logger.info(f"🎯 generate_plan called for {destination} with {len(travel_dates)} days")
             
-            # Call the main generate_itinerary method
             full_itinerary = await self.generate_itinerary(destination, travel_dates, preferences, radius)
             
-            # Return just the plan part (as expected by ItineraryService)
             plan = full_itinerary.get('plan', [])
             logger.info(f"✅ Generated plan with {len(plan)} days")
             
@@ -204,7 +351,7 @@ class LLMService:
             
         except Exception as e:
             logger.error(f"Error in generate_plan: {e}")
-            # Create a simple fallback plan using nearby cities
+            
             return self._create_simple_fallback_plan(request, nearby_cities)
     
     async def generate_fallback_plan(self, request, lat: float, lng: float, nearby_cities: List[str]) -> List[Dict[str, Any]]:
@@ -217,7 +364,7 @@ class LLMService:
             
         except Exception as e:
             logger.error(f"Error in generate_fallback_plan: {e}")
-            # Return minimal fallback if even fallback fails
+           
             return self._create_minimal_fallback(request, lat, lng)
     
     def _create_simple_fallback_plan(self, request, nearby_cities: List[str], lat: float = None, lng: float = None) -> List[Dict[str, Any]]:
@@ -228,11 +375,9 @@ class LLMService:
             
             plan = []
             
-            # Ensure we have some cities to work with
             if not nearby_cities:
                 nearby_cities = ["Local Area", "City Center", "Downtown"]
             
-            # Remove duplicates while preserving order
             unique_cities = []
             seen = set()
             for city in nearby_cities:
@@ -243,7 +388,7 @@ class LLMService:
             nearby_cities = unique_cities
             
             for i, date in enumerate(request.travel_dates):
-                # Rotate through nearby cities
+                
                 city_index = i % len(nearby_cities)
                 current_city = nearby_cities[city_index]
                 
@@ -251,7 +396,7 @@ class LLMService:
                     "day": i + 1,
                     "date": str(date),
                     "formatted_date": date.strftime('%B %d, %Y'),
-                    "town": current_city,  # Use the rotated city name
+                    "town": current_city,  
                     "place": f"{current_city} Center",
                     "activities": [
                         f"Morning: Explore {current_city} historic center and main attractions",
@@ -308,11 +453,11 @@ class LLMService:
             return lat, lng
         except (ValueError, IndexError):
             logger.error(f"Invalid destination format: {destination}")
-            return 0.0, 0.0  # Return default instead of raising exception
+            return 0.0, 0.0  
     
     async def _get_location_context(self, lat: float, lng: float, radius: int) -> Dict[str, Any]:
         """Get location context including city name, country, nearby places"""
-        # Always return a valid dict to prevent NoneType errors
+  
         default_context = {
             "main_location": {"city": "Unknown", "country": "Unknown"},
             "nearby_cities": [],
@@ -337,7 +482,7 @@ class LLMService:
     
     async def _get_weather_forecast(self, lat: float, lng: float, travel_dates: List[str]) -> Dict[str, Any]:
         """Get weather forecast for the travel dates"""
-        # Always return a valid dict to prevent NoneType errors
+
         default_weather = {
             "forecast": [],
             "location": "Unknown",
@@ -358,7 +503,7 @@ class LLMService:
                                preferences: Dict, radius: int, weather_data: Dict) -> str:
         """Build comprehensive prompt for LLM"""
         
-        # Safely extract data with defaults
+       
         interests = preferences.get("interests", [])
         budget_level = preferences.get("budget", "moderate")
         group_size = preferences.get("group_size", 1)
@@ -367,14 +512,14 @@ class LLMService:
         main_location = location_info.get("main_location", {"city": "Unknown", "country": "Unknown"})
         nearby_cities = location_info.get("nearby_cities", [])
         
-        # Format weather information
+    
         weather_info = ""
         if weather_data and weather_data.get("forecast"):
             weather_info = "\n\nWeather Forecast:\n"
             for forecast in weather_data["forecast"]:
                 weather_info += f"- {forecast.get('date')}: {forecast.get('description')}, {forecast.get('temperature')}°C\n"
         
-        # Handle nearby cities that might be strings or objects
+        
         nearby_city_names = []
         for city in nearby_cities[:5]:
             if isinstance(city, dict):
@@ -389,7 +534,6 @@ LOCATION DETAILS:
 - Coordinates: {location_info.get('coordinates', {}).get('lat', 0)}, {location_info.get('coordinates', {}).get('lng', 0)}
 - Search radius: {radius}km
 - Nearby cities to consider: {', '.join(nearby_city_names) if nearby_city_names else 'Local area'}
-- Each destination should be unique 
 - Each destination should be unique 
 
 TRAVEL DETAILS:
@@ -414,7 +558,9 @@ REQUIREMENTS:
 7. Optimize routes to minimize travel distance
 8. Include a mix of must-see attractions and hidden gems
 
-FORMAT YOUR RESPONSE AS A VALID JSON with this exact structure and be careful with the commas separators :
+CRITICAL: You MUST respond with VALID JSON only. Double-check all commas, brackets, and quotation marks.
+
+FORMAT YOUR RESPONSE AS VALID JSON with this exact structure:
 {{
   "plan": [
     {{
@@ -478,93 +624,6 @@ Ensure all coordinates are within the specified radius and activities match the 
             logger.error(f"Ollama API call failed: {e}")
             raise Exception(f"LLM service unavailable: {str(e)}")
     
-    def _parse_llm_response(self, raw_response: str, travel_dates: List[str]) -> Dict[str, Any]:
-        """Parse and validate LLM response with comprehensive JSON repair"""
-        try:
-            logger.info("🔍 Parsing LLM response...")
-            
-            # Step 1: Extract potential JSON from response
-            json_start = raw_response.find('{')
-            json_end = raw_response.rfind('}') + 1
-            
-            if json_start == -1 or json_end == 0:
-                logger.warning("❌ No JSON found in response")
-                raise ValueError("No JSON found in response")
-            
-            json_str = raw_response[json_start:json_end]
-            logger.info(f"📄 Extracted JSON string (length: {len(json_str)})")
-            
-            # Step 2: Try parsing the original JSON first
-            try:
-                parsed = json.loads(json_str)
-                logger.info("✅ Original JSON parsed successfully!")
-                
-                # Validate structure
-                if "plan" not in parsed:
-                    raise ValueError("Missing 'plan' in response")
-                
-                # Ensure we have the right number of days
-                if len(parsed["plan"]) != len(travel_dates):
-                    logger.warning(f"Plan has {len(parsed['plan'])} days but {len(travel_dates)} dates provided")
-                
-                return parsed
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"❌ Initial JSON parsing failed: {e}")
-                logger.info("🔧 Attempting JSON repair...")
-                
-                # Step 3: Apply repair strategies in order of sophistication
-                repair_strategies = [
-                    ("Basic repair", repair_json_basic),
-                    ("Missing commas fix", fix_missing_commas),
-                    ("Smart comma repair", smart_comma_repair),
-                    ("Character-level repair", character_level_repair),
-                    ("Aggressive repair", repair_json_aggressive),
-                    ("ask again", validate_and_repair_json)
-                ]
-                
-                for strategy_name, repair_func in repair_strategies:
-                    try:
-                        logger.info(f"🔧 Trying {strategy_name}...")
-                        repaired_json = repair_func(json_str)
-                        
-                        # Try parsing the repaired JSON
-                        parsed = json.loads(repaired_json)
-                        logger.info(f"✅ {strategy_name} successful!")
-                        
-                        # Validate structure
-                        if "plan" not in parsed:
-                            logger.warning(f"❌ {strategy_name} produced JSON without 'plan' key")
-                            continue
-                        
-                        # Ensure we have the right number of days
-                        if len(parsed["plan"]) != len(travel_dates):
-                            logger.warning(f"Plan has {len(parsed['plan'])} days but {len(travel_dates)} dates provided")
-                        
-                        logger.info(f"🎉 Successfully repaired and parsed JSON using {strategy_name}")
-                        return parsed
-                        
-                    except json.JSONDecodeError as repair_error:
-                        logger.warning(f"❌ {strategy_name} failed: {repair_error}")
-                        continue
-                    except Exception as repair_error:
-                        logger.warning(f"❌ {strategy_name} error: {repair_error}")
-                        continue
-                
-                # Step 4: If all repair strategies fail, log the issue and fall back
-                logger.error("❌ All JSON repair strategies failed")
-                logger.debug(f"Original JSON string (first 500 chars): {json_str[:500]}")
-                raise ValueError("All JSON repair strategies failed")
-                
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"❌ Failed to parse LLM response after all repair attempts: {e}")
-            logger.info("🔄 Creating fallback itinerary...")
-            return self._create_fallback_itinerary(travel_dates)
-        except Exception as e:
-            logger.error(f"❌ Unexpected error in LLM response parsing: {e}")
-            logger.info("🔄 Creating fallback itinerary...")
-            return self._create_fallback_itinerary(travel_dates)
-    
     def _create_fallback_itinerary(self, travel_dates: List[str]) -> Dict[str, Any]:
         """Create a basic fallback itinerary if LLM parsing fails"""
         plan = []
@@ -605,7 +664,7 @@ Ensure all coordinates are within the specified radius and activities match the 
                                weather_data: Dict, location_info: Dict) -> Dict[str, Any]:
         """Enhance the itinerary with additional data"""
         try:
-            # Add weather data
+           
             enhanced = {
                 **itinerary,
                 "weather": weather_data or {},
@@ -618,7 +677,7 @@ Ensure all coordinates are within the specified radius and activities match the 
                 }
             }
             
-            # Calculate distances if coordinates are available
+         
             for day_plan in enhanced.get("plan", []):
                 if day_plan.get("lat") and day_plan.get("lng"):
                     distance = self._calculate_distance(
@@ -636,7 +695,7 @@ Ensure all coordinates are within the specified radius and activities match the 
         """Calculate distance between two points using Haversine formula"""
         import math
         
-        R = 6371  # Earth's radius in kilometers
+        R = 6371  
         
         lat1_rad = math.radians(lat1)
         lat2_rad = math.radians(lat2)

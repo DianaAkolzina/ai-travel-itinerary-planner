@@ -114,8 +114,8 @@ def repair_json_aggressive(json_str: str) -> str:
 
 import json
 from typing import Tuple
-
-async def validate_and_repair_json(json_str: str) -> Tuple[dict, bool]:
+import asyncio
+async def validate_and_repair_json(json_str: str) -> tuple[dict, bool]:
     try:
         parsed = json.loads(json_str)
         return parsed, False
@@ -136,12 +136,8 @@ async def validate_and_repair_json(json_str: str) -> Tuple[dict, bool]:
             except json.JSONDecodeError:
                 continue
 
-        # Retry by asking the LLM again
         print("🔁 All repairs failed, retrying with LLM...")
         from app.services.llm_service import LLMService
         llm_service = LLMService()
-        new_response = await llm_service._call_ollama(
-            "Repeat the last itinerary in valid JSON only with no comments or explanations"
-        )
+        new_response = await llm_service._call_ollama("Repeat the last itinerary in valid JSON only with no comments or explanations")
         return await validate_and_repair_json(new_response)
-
