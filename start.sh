@@ -13,23 +13,23 @@ CYAN='\033[0;36m'
 NC='\033[0m' 
 
 print_status() {
-    echo -e "${GREEN}✅ $1${NC}"
+    echo -e "${GREEN} $1${NC}"
 }
 
 print_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    echo -e "${BLUE}  $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    echo -e "${YELLOW}  $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED} $1${NC}"
 }
 
 print_header() {
-    echo -e "${PURPLE}🚀 $1${NC}"
+    echo -e "${PURPLE} $1${NC}"
 }
 
 check_port() {
@@ -202,9 +202,9 @@ main() {
         CACHE_EXPIRY_HOURS=${CACHE_EXPIRY_HOURS:-24}
         MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/travel-planner}
         
-        print_info "💾 Cache Enabled: $CACHE_ENABLED"
-        print_info "⏰ Cache Expiry: $CACHE_EXPIRY_HOURS hours"
-        print_info "🗄️ MongoDB URI: ${MONGODB_URI:0:30}..."
+        print_info " Cache Enabled: $CACHE_ENABLED"
+        print_info " Cache Expiry: $CACHE_EXPIRY_HOURS hours"
+        print_info " MongoDB URI: ${MONGODB_URI:0:30}..."
         
     else
         print_error ".env file not found!"
@@ -263,7 +263,7 @@ main() {
     fi
     echo ""
     
-    print_header "🐍 Setting up Python AI Service..."
+    print_header " Setting up Python AI Service..."
     
     if [ ! -d "ai-services-new" ]; then
         print_error "ai-services-new directory not found!"
@@ -303,7 +303,7 @@ main() {
     
     if [ "$CACHE_ENABLED" = "true" ]; then
         print_info "Verifying cache dependencies..."
-        python -c "import pymongo; print('✅ pymongo installed')" || {
+        python -c "import pymongo; print(' pymongo installed')" || {
             print_info "Installing pymongo for database caching..."
             pip install pymongo==4.6.1 || {
                 print_error "Failed to install pymongo"
@@ -321,7 +321,7 @@ main() {
     cd ..
     echo ""
     
-    print_header "🚀 Setting up Node.js Backend..."
+    print_header " Setting up Node.js Backend..."
     
     if [ ! -d "backend" ]; then
         print_error "backend directory not found!"
@@ -345,7 +345,7 @@ main() {
     cd ..
     echo ""
     
-    print_header "🌐 Setting up React Frontend..."
+    print_header " Setting up React Frontend..."
     
     if [ ! -d "frontend" ]; then
         print_error "frontend directory not found!"
@@ -369,7 +369,7 @@ main() {
     cd ..
     echo ""
     
-    print_header "🔍 Verifying Service Health..."
+    print_header " Verifying Service Health..."
    
     if wait_for_service "http://localhost:8000/docs" "Python AI Service"; then
      
@@ -394,9 +394,9 @@ main() {
     }
     
     echo ""
-    print_header "🎉 All Services Started Successfully!"
+    print_header " All Services Started Successfully!"
     echo ""
-    echo -e "${CYAN}📊 Service URLs:${NC}"
+    echo -e "${CYAN} Service URLs:${NC}"
     echo -e "   ${GREEN}• Frontend:${NC}     http://localhost:5173"
     echo -e "   ${GREEN}• Node.js API:${NC}  http://localhost:5000"
     echo -e "   ${GREEN}• Python AI:${NC}    http://localhost:8000"
@@ -410,7 +410,7 @@ main() {
     echo -e "   ${BLUE}• Clear Cache:${NC}   curl -X DELETE http://localhost:8000/cache/clear"
     echo -e "   ${BLUE}• Health Check:${NC}  curl http://localhost:8000/health"
     echo ""
-    echo -e "${GREEN}✨ Ready to plan amazing trips! Visit: http://localhost:5173${NC}"
+    echo -e "${GREEN} Ready to plan amazing trips! Visit: http://localhost:5173${NC}"
     echo ""
     
     cleanup() {

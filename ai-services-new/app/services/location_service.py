@@ -69,7 +69,7 @@ class LocationService:
         if coords:
             return coords
         
-        return tuple(None)
+        return (0, 0)
     
     def _geocode_single(self, location_name: str) -> tuple:
         """Geocode a single location name"""

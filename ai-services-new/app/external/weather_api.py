@@ -10,7 +10,7 @@ class WeatherAPIClient:
     def get_forecast(self, lat: float, lng: float) -> dict:
         """Get weather forecast for the location"""
         if not self.openweather_api_key:
-            print("⚠️ No OPENWEATHER_API_KEY found, trying free Open-Meteo API...")
+            print("No OPENWEATHER_API_KEY found, trying free Open-Meteo API...")
             return self._get_weather_forecast_free(lat, lng)
         
         try:
@@ -24,7 +24,7 @@ class WeatherAPIClient:
                 "cnt": 16  
             }
             
-            print(f"🌤️ Getting weather forecast for coordinates: {lat}, {lng}")
+            print(f"Getting weather forecast for coordinates: {lat}, {lng}")
             response = requests.get(url, params=params, timeout=10)
             
             if response.status_code == 200:
@@ -65,15 +65,15 @@ class WeatherAPIClient:
                             "humidity": item["main"]["humidity"]
                         })
                 
-                print(f"🌤️ Weather data retrieved for {weather_info['location']}")
+                print(f"Weather data retrieved for {weather_info['location']}")
                 return weather_info
                 
             else:
-                print(f"⚠️ OpenWeatherMap API error: {response.status_code}")
+                print(f"OpenWeatherMap API error: {response.status_code}")
                 return self._get_weather_forecast_free(lat, lng)
                 
         except Exception as e:
-            print(f"⚠️ Error getting weather data: {e}")
+            print(f"Error getting weather data: {e}")
             return self._get_weather_forecast_free(lat, lng)
 
     def _get_weather_forecast_free(self, lat: float, lng: float) -> dict:
@@ -90,7 +90,7 @@ class WeatherAPIClient:
                 "forecast_days": 7
             }
             
-            print(f"🌤️ Getting free weather forecast for coordinates: {lat}, {lng}")
+            print(f"Getting free weather forecast for coordinates: {lat}, {lng}")
             response = requests.get(url, params=params, timeout=10)
             
             if response.status_code == 200:
@@ -140,11 +140,11 @@ class WeatherAPIClient:
                             "humidity": round(daily["relative_humidity_2m_mean"][i]) if i < len(daily.get("relative_humidity_2m_mean", [])) else 0
                         })
                 
-                print(f"🌤️ Free weather data retrieved successfully")
+                print(f"Free weather data retrieved successfully")
                 return weather_info
                 
         except Exception as e:
-            print(f"⚠️ Error getting free weather data: {e}")
+            print(f"Error getting free weather data: {e}")
             return {
                 "location": "Unknown",
                 "country": "",

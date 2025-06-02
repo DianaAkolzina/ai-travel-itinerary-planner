@@ -15,7 +15,7 @@ class GeoDBClient:
     def get_nearby_cities(self, lat: float, lng: float, radius: int) -> list[str]:
         """Get nearby cities using RapidAPI GeoDB"""
         if not self.api_key:
-            print("⚠️ No RAPIDAPI_KEY found, skipping nearby cities")
+            print(" No RAPIDAPI_KEY found, skipping nearby cities")
             return []
         
         formatted_coords = f"{lat:.4f}{lng:+.4f}" 
@@ -24,31 +24,31 @@ class GeoDBClient:
         params = {"radius": radius, "limit": 10, "minPopulation": 1000}
         
         try:
-            print(f"🌐 Calling GeoDB API with coordinates: {formatted_coords}, radius: {radius}km")
+            print(f"Calling GeoDB API with coordinates: {formatted_coords}, radius: {radius}km")
             response = requests.get(url, headers=self.headers, params=params, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get("data"):
                     cities = [c["city"] for c in data["data"]]
-                    print(f"🌆 Found {len(cities)} nearby cities:", cities)
+                    print(f"Found {len(cities)} nearby cities:", cities)
                     return cities
                 else:
-                    print("⚠️ GeoDB API returned no cities")
+                    print("GeoDB API returned no cities")
                     return []
             elif response.status_code == 400:
-                print(f"⚠️ GeoDB API error 400 - Bad request. Trying alternative format...")
+                print(f"GeoDB API error 400 - Bad request. Trying alternative format...")
                
                 return self._get_nearby_cities_fallback(lat, lng, radius)
             elif response.status_code == 429:
-                print("⚠️ GeoDB API rate limit exceeded")
+                print("GeoDB API rate limit exceeded")
                 return []
             else:
-                print(f"⚠️ GeoDB API returned status {response.status_code}: {response.text}")
+                print(f"GeoDB API returned status {response.status_code}: {response.text}")
                 return []
                 
         except Exception as e:
-            print(f"⚠️ Error calling GeoDB API: {e}")
+            print(f"Error calling GeoDB API: {e}")
             return []
     
     def _get_nearby_cities_fallback(self, lat: float, lng: float, radius: int) -> list[str]:
@@ -63,7 +63,7 @@ class GeoDBClient:
                 "minPopulation": 1000
             }
             
-            print(f"🔄 Trying fallback GeoDB API call...")
+            print(f"Trying fallback GeoDB API call...")
             response = requests.get(url, headers=self.headers, params=params, timeout=10)
             
             if response.status_code == 200:
@@ -73,9 +73,9 @@ class GeoDBClient:
                     print(f"🌆 Fallback found {len(cities)} cities:", cities)
                     return cities
             
-            print("⚠️ Fallback GeoDB API also failed")
+            print("Fallback GeoDB API also failed")
             return []
             
         except Exception as e:
-            print(f"⚠️ Fallback GeoDB API error: {e}")
+            print(f"Fallback GeoDB API error: {e}")
             return []
