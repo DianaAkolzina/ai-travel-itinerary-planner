@@ -4,6 +4,9 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from pprint import pprint
 
+import hashlib
+import json
+
 logger = logging.getLogger(__name__)
 
 class CacheService:
@@ -36,8 +39,9 @@ class CacheService:
             logger.warning(f"❌ MongoDB connection failed: {e}")
             self.client = None
 
+
     def _generate_hash(self, destination: str, travel_dates: list, preferences: dict, radius: int) -> str:
-        import hashlib, json
+        """Generate a unique hash for the request parameters"""
         request_data = {
             "destination": destination,
             "travel_dates": sorted(travel_dates),
@@ -46,6 +50,7 @@ class CacheService:
         }
         request_str = json.dumps(request_data, sort_keys=True)
         return hashlib.sha256(request_str.encode()).hexdigest()
+    
 
     def get_cached_response(self, destination: str, travel_dates: list,
                             preferences: dict, radius: int) -> Optional[Dict[str, Any]]:
@@ -118,7 +123,7 @@ class CacheService:
         if not self.cache_enabled:
             return
         try:
-            if self.collection:
+            if self.collection is not None:
                 result = self.collection.delete_many({"expires_at": {"$lt": datetime.utcnow()}})
                 logger.info(f"🧹 Removed {result.deleted_count} expired MongoDB entries")
 
@@ -139,7 +144,7 @@ class CacheService:
 
         try:
             stats = {"cache_enabled": True, "memory_entries": len(self._memory_cache)}
-            if self.collection:
+            if self.collection is not None:
                 total = self.collection.count_documents({})
                 expired = self.collection.count_documents({"expires_at": {"$lt": datetime.utcnow()}})
                 stats.update({

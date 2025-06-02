@@ -15,8 +15,7 @@ class CachedRequest(BaseModel):
     created_at: datetime
     expires_at: Optional[datetime] = None
     
-    @classmethod
-    def generate_hash(cls, destination: str, travel_dates: list, preferences: dict, radius: int) -> str:
+    def _generate_hash(cls, destination: str, travel_dates: list, preferences: dict, radius: int) -> str:
         """Generate a unique hash for the request parameters"""
         request_data = {
             "destination": destination,
@@ -26,3 +25,4 @@ class CachedRequest(BaseModel):
         }
         request_str = json.dumps(request_data, sort_keys=True)
         return hashlib.sha256(request_str.encode()).hexdigest()
+    
