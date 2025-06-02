@@ -56,14 +56,14 @@ def character_level_repair(json_str: str) -> str:
         return json_str  
     except json.JSONDecodeError as e:
         error_pos = getattr(e, 'pos', 0)
-        print(f"🔧 JSON error at position {error_pos}")
+        print(f" JSON error at position {error_pos}")
         for i in range(error_pos - 1, -1, -1):
             if json_str[i] in '"]}':
                 for j in range(error_pos, len(json_str)):
                     if json_str[j] not in ' \t\n\r':
                         if json_str[j] in '"{[':
                             repaired = json_str[:i+1] + ',' + json_str[i+1:]
-                            print(f"🔧 Inserted comma at position {i + 1}")
+                            print(f" Inserted comma at position {i + 1}")
                             return repaired
                         break
                 break
