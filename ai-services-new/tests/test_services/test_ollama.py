@@ -3,7 +3,6 @@ import requests
 def test_ollama_model():
     url = "http://localhost:11434/api/generate"
 
-    # Dummy values for testing
     main_location = {"city": "Berlin", "country": "Germany"}
     location_info = {"coordinates": {"lat": 52.52, "lng": 13.405}}
     nearby_city_names = ["Potsdam", "Leipzig", "Dresden"]
@@ -85,7 +84,7 @@ Ensure all coordinates are within the specified radius and activities match the 
 """
 
     payload = {
-        "model": "llama3",  # Change to your local model if different
+        "model": "llama3",  
         "prompt": prompt,
         "stream": False,
         "options": {
